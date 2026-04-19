@@ -741,8 +741,21 @@ function awardXP(amount) {
 // GAME RENDERERS
 // ================================================
 function renderGame(id) {
-  const map={song:renderSongGame,knot:renderKnotGame,flag:renderFlagGame,signs:renderSignsGame};
-  return map[id]?map[id]():`<p style="text-align:center;padding:40px;color:#888;font-family:Fredoka One">قريباً! 🏗️</p>`;
+  const rendererNames = {
+    song: 'renderSongGame',
+    knot: 'renderKnotGame',
+    flag: 'renderFlagGame',
+    signs: 'renderSignsGame'
+  };
+  const rendererName = rendererNames[id];
+  const renderer = rendererName ? globalThis[rendererName] : null;
+
+  if (typeof renderer === 'function') {
+    return renderer();
+  }
+
+  console.error('Missing game renderer:', id, rendererName);
+  return `<p style="text-align:center;padding:40px;color:#888;font-family:Fredoka One">اللعبة غير متاحة حالياً 🛠️</p>`;
 }
 
 function gameCard(content) {
@@ -781,34 +794,142 @@ function winCard(emoji,title,msg,xp) {
   `);
 }
 
-// GAME 1: Song
+// GAME 1: SONG - CLICK-BASED ORDERING
+// ================================================
+const correctSongOrder = [0, 1, 2]; // The IDs in their correct sequence
+let songClickedOrder = []; // Track which items were clicked in order
+
 function renderSongGame() {
+  songClickedOrder = []; // Reset
+  
+  const phrases = [
+    { id: 0, text: 'كشّافة تونس', color: 'var(--honey)' },
+    { id: 1, text: 'الوطن عز يا', color: 'var(--sky)' },
+    { id: 2, text: 'نحن أبناء الجهاد', color: 'var(--leaf)' }
+  ];
+
+  // Shuffle the phrases for the challenge
+  const shuffled = [...phrases].sort(() => Math.random() - 0.5);
+
+  const itemsHTML = shuffled.map(phrase => `
+    <button class="song-click-item" 
+         data-id="${phrase.id}"
+         onclick="clickSongItem(${phrase.id}, this)"
+         style="background:${phrase.color};
+                border:3px solid var(--outline);
+                border-radius:12px;
+                padding:14px 10px;
+                text-align:center;
+                font-family:Fredoka One;
+                cursor:pointer;
+                box-shadow:3px 3px 0 var(--outline);
+                user-select:none;
+                transition: all 0.2s;
+                position:relative;
+                font-size:1rem;
+                color:var(--outline)">
+      ${phrase.text}
+      <span class="song-order-badge" style="display:none;position:absolute;top:4px;right:4px;background:var(--outline);color:${phrase.color};border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:0.9rem"></span>
+    </button>
+  `).join('');
+
   return gameCard(`
-    ${gameHeader('🎵','أغنية الكشافة','تعلّم الكلمات وردد مع المجموعة')}
+    ${gameHeader('🎵','أغنية الكشافة','اضغط على الكلمات بالترتيب الصحيح')}
+    
     <div style="background:linear-gradient(135deg,var(--forest),#1d4a36);border:3px solid var(--outline);border-radius:16px;padding:16px;margin-bottom:16px;box-shadow:4px 4px 0 var(--outline)">
       <p class="display-font text-white text-center mb-3" style="font-size:1.1rem">🎶 نشيد الكشاف التونسي</p>
       <div style="text-align:center;line-height:2;color:white;font-family:Tajawal;font-size:1.1rem;font-weight:700">
         <p style="background:rgba(255,255,255,0.1);border-radius:8px;padding:4px 8px;margin:4px 0">كشّافة تونس يا عز الوطن</p>
         <p style="background:rgba(255,255,255,0.1);border-radius:8px;padding:4px 8px;margin:4px 0">نحن أبناء الجهاد والوطن</p>
-        <p style="background:rgba(255,255,255,0.1);border-radius:8px;padding:4px 8px;margin:4px 0">نمشي معاً تحت لواء الأمل</p>
-        <p style="background:rgba(255,255,255,0.1);border-radius:8px;padding:4px 8px;margin:4px 0">وكل يوم نصنع للغد عمل</p>
       </div>
     </div>
+
     <div style="margin-bottom:16px">
-      <p class="display-font" style="font-size:0.9rem;color:var(--outline);margin-bottom:10px">📝 رتّب هذه الكلمات بالترتيب الصحيح:</p>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div style="background:var(--honey);border:3px solid var(--outline);border-radius:12px;padding:10px;text-align:center;font-family:Fredoka One;cursor:move;box-shadow:3px 3px 0 var(--outline)">الوطن عز يا</div>
-        <div style="background:var(--sky);border:3px solid var(--outline);border-radius:12px;padding:10px;text-align:center;font-family:Fredoka One;cursor:move;box-shadow:3px 3px 0 var(--outline)">كشّافة تونس</div>
-        <div style="background:var(--leaf);border:3px solid var(--outline);border-radius:12px;padding:10px;text-align:center;font-family:Fredoka One;cursor:move;box-shadow:3px 3px 0 var(--outline)">نحن أبناء الجهاد</div>
+      <p class="display-font" style="font-size:0.9rem;color:var(--outline);margin-bottom:10px">👆 اضغط على الكلمات بالترتيب الصحيح:</p>
+      <div id="songOrderContainer" style="display:flex;flex-direction:column;gap:10px">
+        ${itemsHTML}
+      </div>
+      
+      <div id="songProgress" style="margin-top:12px;padding:10px;background:#F0F0F0;border-radius:8px;text-align:center">
+        <p style="font-size:0.85rem;color:#666;font-family:Fredoka One">تم اختيار: <span id="progressCount">0</span>/3</p>
+        <p id="progressOrder" style="font-size:0.9rem;color:var(--outline);font-family:Fredoka One;margin-top:4px">—</p>
       </div>
     </div>
-    <button class="toon-btn toon-btn-forest w-full py-3 arabic-display text-lg" onclick="completeSong()">✅ أنا حفظت النشيد! (+15 XP)</button>
+
+    <div style="display:flex;gap:10px">
+      <button id="songCheckBtn" class="toon-btn toon-btn-forest flex-1 py-3 arabic-display text-lg" onclick="checkSongOrder()">
+        ✅ تحقق من الترتيب (+15 XP)
+      </button>
+      <button class="toon-btn flex-1 py-3 arabic-display text-lg" style="background:#FF6B6B;color:white" onclick="resetSongOrder()">
+        🔄 إعادة تعيين
+      </button>
+    </div>
   `);
 }
-function completeSong() { 
-  awardXP(15); 
-  const feedback = RuleBasedAI.getGameFeedback('song', true);
-  document.getElementById('gameInner').innerHTML=winCard('🎵','أحسنت!',feedback,15); 
+
+function clickSongItem(id, element) {
+  // Prevent clicking the same item twice
+  if (songClickedOrder.includes(id)) {
+    return;
+  }
+
+  // Add to clicked order
+  songClickedOrder.push(id);
+  const position = songClickedOrder.length;
+
+  // Show position badge on button
+  const badge = element.querySelector('.song-order-badge');
+  badge.textContent = position;
+  badge.style.display = 'flex';
+
+  // Visual feedback - scale and highlight
+  element.style.transform = 'scale(0.95)';
+  element.style.opacity = '0.7';
+  setTimeout(() => {
+    element.style.transform = 'scale(1)';
+  }, 150);
+
+  // Update progress display
+  updateSongProgress();
+}
+
+function updateSongProgress() {
+  document.getElementById('progressCount').textContent = songClickedOrder.length;
+  const orderText = songClickedOrder.map(id => ['كشّافة تونس', 'الوطن عز يا', 'نحن أبناء الجهاد'][id]).join(' → ');
+  document.getElementById('progressOrder').textContent = orderText || '—';
+}
+
+function resetSongOrder() {
+  songClickedOrder = [];
+  document.querySelectorAll('.song-click-item').forEach(item => {
+    const badge = item.querySelector('.song-order-badge');
+    badge.style.display = 'none';
+    item.style.opacity = '1';
+    item.style.transform = 'scale(1)';
+  });
+  updateSongProgress();
+}
+
+function checkSongOrder() {
+  const btn = document.getElementById('songCheckBtn');
+
+  if (JSON.stringify(songClickedOrder) === JSON.stringify(correctSongOrder)) {
+    // CORRECT!
+    awardXP(15);
+    document.getElementById('gameInner').innerHTML = winCard('🎵','أحسنت!','لقد رتبت النشيد بشكل صحيح!',15);
+  } else {
+    // Wrong order
+    const originalText = btn.innerHTML;
+    btn.style.backgroundColor = '#E63946';
+    btn.style.color = 'white';
+    btn.innerHTML = '❌ الترتيب غير صحيح! حاول مرة أخرى';
+
+    setTimeout(() => {
+      btn.style.backgroundColor = '';
+      btn.style.color = '';
+      btn.innerHTML = originalText;
+    }, 2200);
+  }
 }
 
 // GAME 2: Knot

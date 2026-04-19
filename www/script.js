@@ -18,31 +18,6 @@ if (typeof window !== 'undefined' && window.location.protocol !== 'file:') {
   ]).catch(() => console.log('⚠️  Capacitor modules not available on this platform'));
 }
 
-// ================================================
-// API CONFIGURATION
-// ================================================
-// IMPORTANT: Replace with your actual backend URL or remove if not using Anthropic API
-window.CLAUDE_API_ENDPOINT = window.CLAUDE_API_ENDPOINT || 'https://your-backend-url.com/api/claude';
-
-// Helper function to call Claude via backend proxy
-async function callClaude(messages, model = 'claude-3-5-sonnet-20241022', max_tokens = 1024) {
-  try {
-    const response = await fetch(window.CLAUDE_API_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, model, max_tokens }),
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Backend error: ${response.status}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Claude API error:', error);
-    throw error;
-  }
-}
 
 // ================================================
 // PERSISTENT STORAGE MANAGER (Capacitor Preferences)
@@ -620,6 +595,21 @@ function refreshGamesScreen() {
     </div>`;
   }).join('');
 
+  const tipsHTML = `
+    <div id="smartTipsCard" class="toon-card p-3 mt-4" style="background: var(--cream); border-style: dashed; backdrop-filter: blur(8px);">
+      <div id="smartTipsContent" style="font-size:0.85rem;color:var(--outline);font-family:Tajawal,sans-serif;text-align:center">
+        💡 جارٍ تجهيز نصيحة ذكية...
+      </div>
+      <button onclick="updateSmartTips()" class="toon-btn mt-2" style="font-size:0.7rem;padding:4px 8px">تحديث النصيحة ✨</button>
+    </div>
+  `;
+
+  const container = document.getElementById('gamesExtra') || document.getElementById('gamesGrid').parentElement;
+  if (!document.getElementById('smartTipsCard')) {
+    container.insertAdjacentHTML('beforeend', tipsHTML);
+  }
+
+  updateSmartTips();
   document.getElementById('gameHub').classList.remove('hidden');
   document.getElementById('gameContent').classList.add('hidden');
 }
@@ -632,6 +622,7 @@ function backToHub() {
 function openGame(id) {
   document.getElementById('gameHub').classList.add('hidden');
   document.getElementById('gameContent').classList.remove('hidden');
+  
   document.getElementById('gameInner').innerHTML = renderGame(id);
 }
 
@@ -657,8 +648,21 @@ function awardXP(amount) {
 // GAME RENDERERS
 // ================================================
 function renderGame(id) {
-  const map={song:renderSongGame,knot:renderKnotGame,flag:renderFlagGame,signs:renderSignsGame};
-  return map[id]?map[id]():`<p style="text-align:center;padding:40px;color:#888;font-family:Fredoka One">قريباً! 🏗️</p>`;
+  const rendererNames = {
+    song: 'renderSongGame',
+    knot: 'renderKnotGame',
+    flag: 'renderFlagGame',
+    signs: 'renderSignsGame'
+  };
+  const rendererName = rendererNames[id];
+  const renderer = rendererName ? globalThis[rendererName] : null;
+
+  if (typeof renderer === 'function') {
+    return renderer();
+  }
+
+  console.error('Missing game renderer:', id, rendererName);
+  return `<p style="text-align:center;padding:40px;color:#888;font-family:Fredoka One">اللعبة غير متاحة حالياً 🛠️</p>`;
 }
 
 function gameCard(content) {
@@ -698,36 +702,126 @@ function winCard(emoji,title,msg,xp) {
 }
 
 // GAME 1: Song
+// ================================================
+// (Click-based version - see renderSongGame at line ~710)
+// ================================================
+const correctSongOrder = [0, 1, 2];
+let songClickedOrder = [];
+
 function renderSongGame() {
+  songClickedOrder = []; // Reset for new game
+  const phrases = [
+    { id: 0, text: 'كشّافة تونس', color: 'var(--honey)' },
+    { id: 1, text: 'الوطن عز يا', color: 'var(--sky)' },
+    { id: 2, text: 'نحن أبناء الجهاد', color: 'var(--leaf)' }
+  ];
+
+  // Shuffle the phrases for the challenge
+  const shuffled = [...phrases].sort(() => Math.random() - 0.5);
+
+  const itemsHTML = shuffled.map(phrase => `
+    <button class="song-click-item" 
+         data-id="${phrase.id}"
+         onclick="clickSongItem(${phrase.id}, this)"
+         style="background:${phrase.color};
+                border:3px solid var(--outline);
+                border-radius:12px;
+                padding:14px 10px;
+                text-align:center;
+                font-family:Fredoka One;
+                cursor:pointer;
+                box-shadow:3px 3px 0 var(--outline);
+                user-select:none;
+                transition: all 0.2s;
+                position:relative;
+                font-size:1rem;
+                color:var(--outline)">
+      ${phrase.text}
+      <span class="song-order-badge" style="display:none;position:absolute;top:4px;right:4px;background:var(--outline);color:${phrase.color};border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:0.9rem"></span>
+    </button>
+  `).join('');
+
   return gameCard(`
-    ${gameHeader('🎵','أغنية الكشافة','تعلّم الكلمات وردد مع المجموعة')}
+    ${gameHeader('🎵','أغنية الكشافة','اضغط على الكلمات بالترتيب الصحيح')}
+    
     <div style="background:linear-gradient(135deg,var(--forest),#1d4a36);border:3px solid var(--outline);border-radius:16px;padding:16px;margin-bottom:16px;box-shadow:4px 4px 0 var(--outline)">
       <p class="display-font text-white text-center mb-3" style="font-size:1.1rem">🎶 نشيد الكشاف التونسي</p>
       <div style="text-align:center;line-height:2;color:white;font-family:Tajawal;font-size:1.1rem;font-weight:700">
         <p style="background:rgba(255,255,255,0.1);border-radius:8px;padding:4px 8px;margin:4px 0">كشّافة تونس يا عز الوطن</p>
         <p style="background:rgba(255,255,255,0.1);border-radius:8px;padding:4px 8px;margin:4px 0">نحن أبناء الجهاد والوطن</p>
-        <p style="background:rgba(255,255,255,0.1);border-radius:8px;padding:4px 8px;margin:4px 0">نمشي معاً تحت لواء الأمل</p>
-        <p style="background:rgba(255,255,255,0.1);border-radius:8px;padding:4px 8px;margin:4px 0">وكل يوم نصنع للغد عمل</p>
       </div>
     </div>
+
     <div style="margin-bottom:16px">
-      <p class="display-font" style="font-size:0.9rem;color:var(--outline);margin-bottom:10px">📝 رتّب هذه الكلمات بالترتيب الصحيح:</p>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div style="background:var(--honey);border:3px solid var(--outline);border-radius:12px;padding:10px;text-align:center;font-family:Fredoka One;cursor:move;box-shadow:3px 3px 0 var(--outline)">الوطن عز يا</div>
-        <div style="background:var(--sky);border:3px solid var(--outline);border-radius:12px;padding:10px;text-align:center;font-family:Fredoka One;cursor:move;box-shadow:3px 3px 0 var(--outline)">كشّافة تونس</div>
-        <div style="background:var(--leaf);border:3px solid var(--outline);border-radius:12px;padding:10px;text-align:center;font-family:Fredoka One;cursor:move;box-shadow:3px 3px 0 var(--outline)">نحن أبناء الجهاد</div>
+      <p class="display-font" style="font-size:0.9rem;color:var(--outline);margin-bottom:10px">👆 اضغط على الكلمات بالترتيب الصحيح:</p>
+      <div id="songOrderContainer" style="display:flex;flex-direction:column;gap:10px">
+        ${itemsHTML}
+      </div>
+      
+      <div id="songProgress" style="margin-top:12px;padding:10px;background:#F0F0F0;border-radius:8px;text-align:center">
+        <p style="font-size:0.85rem;color:#666;font-family:Fredoka One">تم اختيار: <span id="progressCount">0</span>/3</p>
+        <p id="progressOrder" style="font-size:0.9rem;color:var(--outline);font-family:Fredoka One;margin-top:4px">—</p>
       </div>
     </div>
-    <button class="toon-btn toon-btn-forest w-full py-3 arabic-display text-lg" onclick="completeSong()">✅ أنا حفظت النشيد! (+15 XP)</button>
+
+    <div style="display:flex;gap:10px">
+      <button id="songCheckBtn" class="toon-btn toon-btn-forest flex-1 py-3 arabic-display text-lg" onclick="checkSongOrder()">
+        ✅ تحقق من الترتيب (+15 XP)
+      </button>
+      <button class="toon-btn flex-1 py-3 arabic-display text-lg" style="background:#FF6B6B;color:white" onclick="resetSongOrder()">
+        🔄 إعادة تعيين
+      </button>
+    </div>
   `);
 }
-function completeSong() { awardXP(15); document.getElementById('gameInner').innerHTML=winCard('🎵','أحسنت!','لقد حفظت النشيد الكشفي!',15); }
 
+function clickSongItem(id, element) {
+  // Prevent clicking the same item twice
+  if (songClickedOrder.includes(id)) {
+    return;
+  }
+
+  // Add to clicked order
+  songClickedOrder.push(id);
+  const position = songClickedOrder.length;
+
+  // Show position badge on button
+  const badge = element.querySelector('.song-order-badge');
+  badge.textContent = position;
+  badge.style.display = 'flex';
+
+  // Visual feedback - scale and highlight
+  element.style.transform = 'scale(0.95)';
+  element.style.opacity = '0.7';
+  setTimeout(() => {
+    element.style.transform = 'scale(1)';
+  }, 150);
+
+  // Update progress display
+  updateSongProgress();
+}
+
+function updateSongProgress() {
+  document.getElementById('progressCount').textContent = songClickedOrder.length;
+  const orderText = songClickedOrder.map(id => ['كشّافة تونس', 'الوطن عز يا', 'نحن أبناء الجهاد'][id]).join(' → ');
+  document.getElementById('progressOrder').textContent = orderText || '—';
+}
+
+function resetSongOrder() {
+  songClickedOrder = [];
+  document.querySelectorAll('.song-click-item').forEach(item => {
+    const badge = item.querySelector('.song-order-badge');
+    badge.style.display = 'none';
+    item.style.opacity = '1';
+    item.style.transform = 'scale(1)';
+  });
+  updateSongProgress();
+}
 // GAME 2: Knot
-let knotDone=[];
+let knotDone = [];
 function renderKnotGame() {
-  knotDone=[];
-  const steps=[
+  knotDone = [];
+  const steps = [
     'خذ حبلاً وضع الطرف الأيمن فوق الأيسر وأمرره من تحته',
     'الآن ضع الطرف الأيسر فوق الأيمن وأمرره من تحته',
     'اسحب الطرفين بقوة متساوية للخارج',
@@ -735,7 +829,6 @@ function renderKnotGame() {
   ];
   return gameCard(`
     ${gameHeader('🪢','العقدة المربعة','اتبع الخطوات بالترتيب الصحيح')}
-    <!-- SVG rope diagram -->
     <div style="text-align:center;margin-bottom:16px">
       <svg width="180" height="70" viewBox="0 0 180 70">
         <path d="M10,25 Q50,10 90,35 Q130,60 170,45" stroke="var(--wood)" stroke-width="8" fill="none" stroke-linecap="round"/>
@@ -772,43 +865,30 @@ function completeKnot() { knotDone=[]; awardXP(20); document.getElementById('gam
 function renderFlagGame() {
   return gameCard(`
     ${gameHeader('🚩','تحية العلم','تعلّم الخطوات الرسمية')}
-    <!-- Animated scout SVG -->
     <div style="text-align:center;margin-bottom:16px;position:relative">
       <svg width="220" height="180" viewBox="0 0 220 180">
-        <!-- Flag pole -->
         <line x1="160" y1="15" x2="160" y2="170" stroke="var(--wood)" stroke-width="5" stroke-linecap="round"/>
         <rect x="160" y="15" width="50" height="34" fill="var(--red)" rx="2" stroke="var(--outline)" stroke-width="2"/>
         <circle cx="181" cy="32" r="11" fill="white" stroke="var(--outline)" stroke-width="2"/>
         <path d="M175,32 L181,25 L187,32 L181,39 Z" fill="var(--red)"/>
-        <!-- Scout body -->
         <circle cx="75" cy="48" r="22" fill="#FDDCB5" stroke="var(--outline)" stroke-width="2.5"/>
-        <!-- Hat -->
         <ellipse cx="75" cy="30" rx="27" ry="8" fill="var(--wood)" stroke="var(--outline)" stroke-width="2"/>
         <rect x="55" y="22" width="40" height="12" rx="3" fill="#6B4226" stroke="var(--outline)" stroke-width="2"/>
-        <!-- Eyes + smile -->
         <circle cx="68" cy="47" r="3" fill="white" stroke="var(--outline)" stroke-width="1"/>
         <circle cx="82" cy="47" r="3" fill="white" stroke="var(--outline)" stroke-width="1"/>
         <circle cx="69" cy="47" r="1.5" fill="#1A0A00"/>
         <circle cx="83" cy="47" r="1.5" fill="#1A0A00"/>
         <path d="M70,55 Q75,60 80,55" stroke="var(--outline)" stroke-width="2" fill="none" stroke-linecap="round"/>
-        <!-- Body/uniform -->
         <rect x="56" y="70" width="38" height="52" rx="8" fill="var(--forest)" stroke="var(--outline)" stroke-width="2.5"/>
-        <!-- Neckerchief -->
         <polygon points="75,70 62,82 75,86 88,82" fill="var(--red)" stroke="var(--outline)" stroke-width="1.5"/>
-        <!-- Badge -->
         <circle cx="75" cy="78" r="6" fill="var(--honey)" stroke="var(--outline)" stroke-width="1.5"/>
-        <text x="75" y="82" text-anchor="middle" font-size="7" fill="var(--outline)">⚜️</text>
-        <!-- Left arm (resting) -->
         <rect x="42" y="72" width="14" height="36" rx="6" fill="var(--forest)" stroke="var(--outline)" stroke-width="2"/>
-        <!-- Right arm SALUTING (animated) -->
         <g style="transform-origin:88px 78px;animation:salute 2s ease-in-out infinite alternate">
           <rect x="88" y="72" width="14" height="42" rx="6" fill="var(--forest)" stroke="var(--outline)" stroke-width="2"/>
           <circle cx="95" cy="112" r="9" fill="#FDDCB5" stroke="var(--outline)" stroke-width="2"/>
         </g>
-        <!-- Legs -->
         <rect x="59" y="120" width="14" height="42" rx="6" fill="#2D3748" stroke="var(--outline)" stroke-width="2"/>
         <rect x="77" y="120" width="14" height="42" rx="6" fill="#2D3748" stroke="var(--outline)" stroke-width="2"/>
-        <!-- Shoes -->
         <ellipse cx="66" cy="162" rx="12" ry="6" fill="#1A1A1A" stroke="var(--outline)" stroke-width="1.5"/>
         <ellipse cx="84" cy="162" rx="12" ry="6" fill="#1A1A1A" stroke="var(--outline)" stroke-width="1.5"/>
       </svg>
@@ -827,18 +907,18 @@ function renderFlagGame() {
 function completeFlag() { awardXP(12); document.getElementById('gameInner').innerHTML=winCard('🚩','أحسنت!','أتقنت تحية العلم!',12); }
 
 // GAME 4: Signs
-let signsRevealed=[];
-const signs=[
-  {sign:'✋',name:'توقف',desc:'اليد مرفوعة — كلّ شيء يتوقف'},
-  {sign:'👍',name:'حسناً / موافق',desc:'الإبهام للأعلى — كل شيء بخير'},
-  {sign:'🤟',name:'نداء الكشاف',desc:'3 أصابع — شارة الكشافة الرسمية'},
-  {sign:'👉',name:'اتجه هنا',desc:'السبابة للأمام — تعال هنا'},
-  {sign:'🤫',name:'صمت',desc:'الجميع يصمت الآن'},
-  {sign:'🔄',name:'عودة',desc:'ارجع إلى نقطة التجمع'},
+let signsRevealed = [];
+const signs = [
+  {sign:'✋', name:'توقف',       desc:'اليد مرفوعة — كلّ شيء يتوقف'},
+  {sign:'👍', name:'حسناً / موافق', desc:'الإبهام للأعلى — كل شيء بخير'},
+  {sign:'🤟', name:'نداء الكشاف', desc:'3 أصابع — شارة الكشافة الرسمية'},
+  {sign:'👉', name:'اتجه هنا',   desc:'السبابة للأمام — تعال هنا'},
+  {sign:'🤫', name:'صمت',        desc:'الجميع يصمت الآن'},
+  {sign:'🔄', name:'عودة',       desc:'ارجع إلى نقطة التجمع'},
 ];
 
 function renderSignsGame() {
-  signsRevealed=[];
+  signsRevealed = [];
   return gameCard(`
     ${gameHeader('🤟','إشارات اليد','انقر على كل إشارة لتعلّم معناها')}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
@@ -850,7 +930,7 @@ function renderSignsGame() {
           <div style="font-size:2.4rem;margin-bottom:4px">${s.sign}</div>
           <p style="font-family:Fredoka One;font-size:0.85rem;color:var(--outline)">${s.name}</p>
           <p id="signDesc-${i}" style="font-size:0.72rem;color:#666;margin-top:4px;display:none">${s.desc}</p>
-          <div id="signCheck-${i}" style="display:none;margin-top:4px">
+          <div id="signCheck-${i}" style="margin-top:4px;display:none">
             <span style="color:var(--forest);font-family:Fredoka One;font-size:0.8rem">✓ فهمت!</span>
           </div>
         </div>
@@ -861,6 +941,7 @@ function renderSignsGame() {
     </div>
   `);
 }
+
 function revealSign(i) {
   if (signsRevealed.includes(i)) return;
   signsRevealed.push(i);
@@ -906,6 +987,28 @@ function initExplorer() {
       <p style="font-size:0.72rem;color:var(--forest);margin-top:5px;font-family:Fredoka One">اقرأ أكثر ↗</p>
     </div>
   `).join('');
+}
+// Check if the clicked order is correct
+function checkSongOrder() {
+  const btn = document.getElementById('songCheckBtn');
+
+  if (JSON.stringify(songClickedOrder) === JSON.stringify(correctSongOrder)) {
+    // CORRECT!
+    awardXP(15);
+    document.getElementById('gameInner').innerHTML = winCard('🎵','أحسنت!','لقد رتبت النشيد بشكل صحيح!',15);
+  } else {
+    // Wrong order
+    const originalText = btn.innerHTML;
+    btn.style.backgroundColor = '#E63946';
+    btn.style.color = 'white';
+    btn.innerHTML = '❌ الترتيب غير صحيح! حاول مرة أخرى';
+
+    setTimeout(() => {
+      btn.style.backgroundColor = '';
+      btn.style.color = '';
+      btn.innerHTML = originalText;
+    }, 2200);
+  }
 }
 
 function searchWiki() {
@@ -955,3 +1058,301 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   refreshLeaderDashboard();
 });
+// ================================================
+// INDEXATION AI ENGINE (Smart Tips)
+// ================================================
+const TIPS_KNOWLEDGE_BASE = [
+  {
+    id: "leadership_1",
+    title: "نصيحة القيادة",
+    content: "يا {name}، أنت الآن من المتقدمين! ساعد الشبل والكشافة الأصغر منك.",
+    tags: ["متقدم", "قائد", "خبير", "مساعدة"],
+    keywords: ["متقدم", "عالية", "خبير", "كبير", "مرشد"]
+  },
+  {
+    id: "beginner_1",
+    title: "نصيحة البداية",
+    content: "يا {name}، لا تنظر إلى عدد النقاط. كل لعبة جديدة تقربك من الهدف.",
+    tags: ["مبتدئ", "جديد", "تشجيع"],
+    keywords: ["مبتدئ", "قليلة", "صفر", "بداية", "جديد"]
+  },
+  {
+    id: "cub_scout",
+    title: "مرحلة الشبل",
+    content: "يا {name} الشبل الرائع، الابتسامة والحماس أهم شيء في هذه المرحلة!",
+    tags: ["شبل", "صغير", "مرحلة"],
+    keywords: ["شبل", "حماس", "ابتسامة", "صغير"]
+  },
+  {
+    id: "skill_improve",
+    title: "تطوير المهارات",
+    content: "ركز على تحسين مهارة واحدة فقط هذا الأسبوع يا {name}.",
+    tags: ["تعلم", "مهارة", "تطوير"],
+    keywords: ["ضعيفة", "تحسين", "جديد", "مبتدئ"]
+  },
+  {
+    id: "skill_expert",
+    title: "إتقان المهارات",
+    content: "مهاراتك ممتازة يا {name}! استمر في الممارسة لتصل إلى القمة.",
+    tags: ["خبير", "مهارة", "ممتاز"],
+    keywords: ["خبير", "عالية", "قوي", "متقدم"]
+  },
+  {
+    id: "active_player",
+    title: "النشاط المستمر",
+    content: "لقد جربت العديد من الألعاب يا {name}... هذا تقدم رائع! استمر.",
+    tags: ["نشيط", "ألعاب", "استمرار"],
+    keywords: ["نشيط", "كثيرة", "لعب", "متقدم"]
+  },
+  {
+    id: "general_nature",
+    title: "حب الطبيعة",
+    content: "استمتع بالطبيعة وتعلم منها يا {name}، فهي أفضل معلم للكشاف.",
+    tags: ["طبيعة", "عام", "كشاف"],
+    keywords: ["طبيعة", "غابة", "كشاف", "عام"]
+  },
+  {
+    id: "knot_tips",
+    title: "العقدة المربعة",
+    content: "يا {name}، لربط العقدة المربعة: مرّر الحبل الأيمن فوق الأيسر ثم تحته، ثم كرر العملية بالاتجاه المعاكس. تدرّب ببطء وستتقنها!",
+    tags: ["عقدة", "ربط", "حبل", "مهارة", "بقاء"],
+    keywords: ["عقده", "مربعه", "اربط", "حبل", "عقد", "ربط", "عقدة", "كيف"]
+  },
+  {
+    id: "signals_tips",
+    title: "الإشارات الكشفية",
+    content: "يا {name}، الإشارات الكشفية لغة خاصة بيننا! اليد المرفوعة تعني توقف، والسبابة للأمام تعني تعال هنا، وإصبع على الفم يعني صمت تام.",
+    tags: ["إشارات", "يد", "تواصل", "كشفية", "معاني"],
+    keywords: ["اشارات", "اشاره", "يد", "كشفيه", "معني", "معني", "رموز", "علامات"]
+  },
+  {
+    id: "fatigue_tips",
+    title: "الراحة في المخيم",
+    content: "يا {name}، التعب في المخيم طبيعي جداً! اشرب الماء أولاً، استرح قليلاً في الظل، وتناول وجبة خفيفة. طاقتك ستعود بسرعة!",
+    tags: ["تعب", "راحة", "مخيم", "صحة", "طاقة"],
+    keywords: ["تعبت", "تعب", "تعبان", "راحه", "مخيم", "افعل", "تعال", "مساعده"]
+  },
+  {
+    id: "leadership_tips",
+    title: "كيف تكون قائداً جيداً",
+    content: "يا {name}، القائد الجيد يستمع أولاً ثم يتكلم. كن قدوة لفريقك، ساعد الأصغر منك، وتحلَّ بالصبر والابتسامة دائماً. القيادة مسؤولية قبل أن تكون امتياز!",
+    tags: ["قيادة", "قائد", "فريق", "مسؤولية", "نجاح"],
+    keywords: ["قايد", "قياده", "قائد", "اكون", "جيد", "قائدا", "قيادة", "مسؤوليه"]
+  },
+  {
+    id: "firstaid_tips",
+    title: "الإسعافات الأولية",
+    content: "يا {name}، في الإسعافات الأولية: احم نفسك أولاً، ثم اطلب المساعدة بصوت عالٍ، وأوقف أي نزيف بضغط قماش نظيف على الجرح. كشاف مستعد دائماً!",
+    tags: ["إسعافات", "صحة", "طوارئ", "نجدة", "جرح"],
+    keywords: ["اسعافات", "اسعاف", "جرح", "نزيف", "طوارئ", "مساعده", "صحه"]
+  }
+];
+
+let TIPS_INDEX_CACHE = null; // rebuilt automatically on first search call
+
+function normalizeArabic(text) {
+  return (text || '')
+    .toLowerCase()
+    .replace(/[\u064B-\u0652\u0670]/g, '')  // remove diacritics
+    .replace(/ـ/g, '')                        // remove tatweel
+    .replace(/[،؟؛٪]/g, ' ')                 // Arabic punctuation → space
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[^\u0600-\u06FF\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeArabic(text) {
+  const stopWords = new Set([
+    'في', 'من', 'على', 'الى', 'إلى', 'عن', 'يا', 'او', 'أو',
+    'هو', 'هي', 'هذا', 'هذه', 'كيف', 'ما', 'ماذا', 'انا', 'انت',
+    'لقد', 'قد', 'مع', 'لا', 'الي', 'وهو', 'عند', 'ثم', 'لكن'
+  ]);
+  return normalizeArabic(text)
+    .split(' ')
+    // Strip definite article "ال" prefix and trailing alef (from tanwin normalization)
+    .map(t => t.replace(/^ال/, '').replace(/ا$/, '') || t)
+    .filter(t => t.length > 1 && !stopWords.has(t));
+}
+
+function buildTipsIndex() {
+  if (TIPS_INDEX_CACHE) return TIPS_INDEX_CACHE;
+
+  const docs = TIPS_KNOWLEDGE_BASE.map(doc => {
+    const merged = [doc.title, doc.content, ...(doc.tags || []), ...(doc.keywords || [])].join(' ');
+    return { ...doc, tokens: tokenizeArabic(merged) };
+  });
+
+  const vocabulary = new Set();
+  docs.forEach(doc => doc.tokens.forEach(t => vocabulary.add(t)));
+
+  const idf = {};
+  const docCount = docs.length;
+  vocabulary.forEach(term => {
+    const containing = docs.reduce((count, doc) => count + (doc.tokens.includes(term) ? 1 : 0), 0);
+    idf[term] = Math.log((docCount + 1) / (containing + 1)) + 1;
+  });
+
+  TIPS_INDEX_CACHE = { docs, vocabulary: Array.from(vocabulary), idf };
+  return TIPS_INDEX_CACHE;
+}
+
+function tfVector(tokens) {
+  const vec = {};
+  if (!tokens.length) return vec;
+  tokens.forEach(t => {
+    vec[t] = (vec[t] || 0) + 1;
+  });
+  const size = tokens.length;
+  Object.keys(vec).forEach(t => {
+    vec[t] /= size;
+  });
+  return vec;
+}
+
+function tfidfVector(tokens, idf) {
+  const tf = tfVector(tokens);
+  const vec = {};
+  Object.keys(tf).forEach(t => {
+    vec[t] = tf[t] * (idf[t] || 0);
+  });
+  return vec;
+}
+
+function cosineSimilarity(vecA, vecB) {
+  const terms = new Set([...Object.keys(vecA), ...Object.keys(vecB)]);
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+
+  terms.forEach(term => {
+    const a = vecA[term] || 0;
+    const b = vecB[term] || 0;
+    dot += a * b;
+    normA += a * a;
+    normB += b * b;
+  });
+
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function searchTipsTFIDF(query, topK = 3) {
+  const { docs, idf } = buildTipsIndex();
+  const queryTokens = tokenizeArabic(query);
+  if (!queryTokens.length) return [];
+
+  const queryVec = tfidfVector(queryTokens, idf);
+
+  return docs
+    .map(doc => {
+      const docVec = tfidfVector(doc.tokens, idf);
+      const score = cosineSimilarity(queryVec, docVec);
+      const matchedTerms = [...new Set(queryTokens.filter(t => doc.tokens.includes(t)))];
+      return { ...doc, score, matchedTerms };
+    })
+    .filter(r => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
+}
+
+// Convert scout state into context query for passive smart tips.
+function extractScoutContext(member) {
+  let terms = ["عام"]; // Base term so general tips can match
+
+  if (member.rank) terms.push(member.rank);
+  if (member.rank === 'شبل') terms.push("صغير", "مبتدئ");
+  if (member.rank === 'مرشد') terms.push("قائد", "كبير", "خبير");
+
+  if (member.xp < 20) terms.push("مبتدئ", "جديد", "قليلة", "صفر");
+  else if (member.xp > 40) terms.push("متقدم", "خبير", "عالية", "نشيط");
+
+  if (member.skill <= 2) terms.push("تعلم", "تحسين", "ضعيفة");
+  else if (member.skill >= 4) terms.push("خبير", "مهارة", "ممتاز", "قوي");
+
+  if (member.gamesPlayed === 0) terms.push("صفر", "بداية");
+  else if (member.gamesPlayed >= 3) terms.push("نشيط", "كثيرة");
+
+  return terms.join(" ");
+}
+
+function askAIQuestion(question) {
+  document.getElementById('aiQuestion').value = question;
+  askAI();
+}
+
+function askAI() {
+  const questionEl = document.getElementById('aiQuestion');
+  const responseEl = document.getElementById('aiResponse');
+  const responseText = document.getElementById('aiResponseText');
+  if (!questionEl || !responseEl || !responseText) return;
+
+  const question = questionEl.value.trim();
+  if (!question) return;
+
+  const results = searchTipsTFIDF(question, 3);
+  if (!results.length) {
+    responseText.innerHTML = '🤔 لم أجد نتيجة قوية. جرّب كلمات أوضح مثل: عقدة، إسعافات، قيادة، إشارات، طبيعة.';
+    responseEl.style.display = 'block';
+    return;
+  }
+
+  responseText.innerHTML = results.map((r, idx) => {
+    const relevance = Math.round(Math.min(99, r.score * 100));
+    const matched = r.matchedTerms.length ? r.matchedTerms.join('، ') : 'عام';
+    return `
+      <div style="margin-bottom:${idx < results.length - 1 ? '10px' : '0'};padding-bottom:${idx < results.length - 1 ? '10px' : '0'};border-bottom:${idx < results.length - 1 ? '1px dashed rgba(0,0,0,0.15)' : 'none'}">
+        <p style="font-family:Fredoka One;font-size:0.9rem;color:var(--forest)">${r.title}</p>
+        <p style="font-size:0.9rem;line-height:1.6">${r.content.replace('{name}', selectedMember?.name || 'يا كشاف')}</p>
+        <p style="font-size:0.7rem;color:#777">الترابط: ${relevance}% | كلمات مطابقة: ${matched}</p>
+      </div>
+    `;
+  }).join('');
+
+  responseEl.style.display = 'block';
+}
+
+async function updateSmartTips() {
+  const tipContainer = document.getElementById('smartTipsContent');
+  if (!tipContainer) return;
+
+  const m = APP_STATE.members.find(x => x.id === APP_STATE.currentMemberId) || selectedMember;
+  if (!m) {
+    tipContainer.innerHTML = '💡 كن مستعدًا دائمًا! العمل الجماعي هو مفتاح النجاح.';
+    return;
+  }
+
+  tipContainer.innerHTML = '<span class="loading-dots">✨ جاري تحليل المعطيات لاستخراج النصيحة...</span>';
+
+  // Small realistic delay for UI feel
+  await new Promise(resolve => setTimeout(resolve, 800));
+
+  // Extract context and run TF-IDF search.
+  const query = extractScoutContext(m);
+  const searchResults = searchTipsTFIDF(query, 2);
+
+  let finalTip = "تذكر يا بطل: الكشافة ليست فقط ألعاب، بل بناء شخصية قوية ومسؤولة.";
+  let debugHtml = "";
+
+  if (searchResults.length > 0) {
+    // Pick the top result (or randomly from top 2 to avoid repetition)
+    const topCandidates = searchResults.slice(0, 2);
+    const chosen = topCandidates[Math.floor(Math.random() * topCandidates.length)];
+    
+    // Replace placeholder with actual name
+    finalTip = chosen.content.replace('{name}', m.name);
+
+    // Optional: Display indexation stats matching the University app's transparency
+    debugHtml = `
+      <div style="font-size: 0.65rem; color: #888; margin-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 6px;">
+        🔍 مؤشر الترابط: ${Math.round(Math.min(99, chosen.score * 100))}% | الكلمات المفتاحية: ${chosen.matchedTerms.join('، ') || 'عام'}
+      </div>
+    `;
+  }
+
+  tipContainer.innerHTML = `💡 ${finalTip} ${debugHtml}`;
+}
